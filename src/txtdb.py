@@ -2,16 +2,23 @@ from ctypes import *
 import os, sys
 from ulid import ULID
 
-# dir = os.path.dirname(sys.modules["libtxtdb"].__file__)
-# if sys.platform == "win32":
-#     libName = "libtxtdb.dll"
-# elif sys.platform == "darwin":
-#     libName = "libtxtdb.dylib"
-# else:
-#     libName = "libtxtdb.so"
-# dll = cdll.LoadLibrary(os.path.join(dir, libName))
-
 import libtxtdb
+
+class __Null:
+    def __str__(self):
+        return "?"
+    def __repr__(self):
+        return "__Null"
+
+Null = __Null()
+
+class __Nothing:
+    def __str__(self):
+        return "_"
+    def __repr__(self):
+        return "__Nothing"
+
+Nothing = __Nothing()
 
 class TxtRecordMeta:
     def __init__(self):
@@ -24,6 +31,13 @@ class TxtRecord:
         self.slone = None
         self.meta = TxtRecordMeta()
 
+    def __getitem__(self, field_name):
+        if isinstance(field_name, str):
+            if field_name in self.data:
+                return self.data[field_name]
+        return Nothing
+
+
 class TxtTable:
     def __init__(self, db_ref, table_name):
         self.db_ref = db_ref
@@ -34,7 +48,23 @@ class TxtTable:
 
     def create(self, record):
         result = TxtRecord()
-        result.id = libtxtdb.cannonical_create_record(self._fulldir().encode("utf8"), record.encode("utf8"))
+        result.id = libtxtdb.create_record(
+            self.db_ref.db_base_dir.encode("utf8"), 
+            self.table_dir.encode("utf8"), 
+            record.encode("utf8")
+        )
+        return result
+
+    def read(self, record_id):
+        result = TxtRecord()
+        result.id = record_id
+        doc_str = libtxtdb.read_record(
+            self.db_ref.db_base_dir.encode("utf8"), 
+            self.table_dir.encode("utf8"), 
+            str(record_id).encode("utf8")
+        )
+        if doc_str == "":
+            return None
         return result
 
 

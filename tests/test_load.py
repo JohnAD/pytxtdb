@@ -1,4 +1,5 @@
 import txtdb
+from txtdb import Null
 
 db = txtdb.open_database("./testdb")
 person_table = db["person_table"]
@@ -13,8 +14,22 @@ person_c = """SLONE 1.0
 }
 """
 
+print("CREATE:")
+
 result = person_table.create(person_c)
+print("  id generated:", result.id)
 
 assert result.id != None
 
-print("id generated = ", result.id)
+print("READ:")
+
+record = person_table.read(result.id)
+print("  record received had name:", record["name"])
+
+assert record != None
+assert record.id == result.id
+assert record["name"] == "JoeJoe"
+
+# print("UPDATE:")
+
+# print("DELETE:")
