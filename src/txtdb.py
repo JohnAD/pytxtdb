@@ -4,6 +4,8 @@ from ulid import ULID
 
 import libtxtdb
 
+from slone import deserialize_slone
+
 class __Null:
     def __str__(self):
         return "?"
@@ -63,8 +65,10 @@ class TxtTable:
             self.table_dir.encode("utf8"), 
             str(record_id).encode("utf8")
         )
-        if doc_str == "":
+        if doc_str.startswith("ERR"):
             return None
+        record = deserialize_slone(doc_str)
+        print(record)
         return result
 
 
