@@ -1,0 +1,2 @@
+python-ulid==1.0.3
+-e git+https://github.com/JohnAD/pytxtdb.git@f5d298df4f1bc04d290584ced8eaaf8550445206#egg=txtdb

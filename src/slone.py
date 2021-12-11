@@ -4,12 +4,13 @@ import re
 import itertools
 
 def parse_parts(line):
+    # TODO: handle lots of other forms. This will do for MVP.
     tabSpaceCnt = None
     name = None
     attr = None
     value = None
     two_part = re.findall('("[^"]*"|[_]) = ("[^"]*"|.)', line)
-    print(two_part)
+    # print(two_part)
     if len(two_part) == 1:
         core = two_part[0]
         name = core[0]
@@ -21,9 +22,12 @@ def parse_parts(line):
 def deserialize_slone(doc_str):
     result = {}
     lines = doc_str.split("\n")
+    ptr = [result]
     for line in lines:
-        (tabs, name, attr, value) = parse_parts(line)
-        if tabs != None:
+        (tab, name, attr, value) = parse_parts(line)
+        new_object = False
+        if tab != None:
+            level = int(tab/2)
             if name.startswith('"'):
                 name = name.strip('"')
             else:
@@ -38,7 +42,42 @@ def deserialize_slone(doc_str):
                     value = None
                 elif value == "{":
                     value = {}
+                    new_object = True
                 else:
                     print("err " + line)
-            result[name] = value
+            ptr[level][name] = value
+            if new_object:
+                if len(ptr) == (level + 1):
+                    ptr.append(ptr[level][name])
+                else:
+                    ptr[level + 1] = ptr[level][name]
+    return result
+
+
+def _serialize(doc, level):
+    result = ""
+    for key in doc:
+        # indent
+        result += " " * (level * 2)
+        # name
+        result += '"' + key + '" '
+        # equals
+        result += "= "
+        # value
+        value = doc[key]
+        if isinstance(value, dict):
+            result += "{\n"
+            result += _serialize(value, level + 1)
+            result += " " * (level * 2)
+            result += "}\n"
+        elif value is None:
+            result += "?\n"
+        else:
+            result += '"' + str(value) + '"\n'
+    return result
+
+
+def serialize_slone(doc):
+    result = "#! SLONE 1.0\n"
+    result += _serialize(doc, 0)
     return result

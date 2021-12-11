@@ -4,7 +4,7 @@ from ulid import ULID
 
 import libtxtdb
 
-from slone import deserialize_slone
+from slone import deserialize_slone, serialize_slone
 
 class __Null:
     def __str__(self):
@@ -22,22 +22,45 @@ class __Nothing:
 
 Nothing = __Nothing()
 
-class TxtRecordMeta:
-    def __init__(self):
-        self.version = None
+def interpret_dict_name(name):
+    if name is None:
+        return None
+    elif isinstance(name, __Null):
+        raise ValueError("A item name cannot be Null (aka 'unknown'). Technically, one cannot hash a value that isn't known yet. Perhaps v3.0 will import from a time-travel library.")
+    elif isinstance(name, __Nothing):
+        return None
+    else:
+        return str(name)
+
+def interpret_dict_value(value):
+    if value is None:
+        return None
+    elif isinstance(value, __Null):
+        return None
+    elif isinstance(value, __Nothing):
+        return None # TODO: turn this into a `del x[name]` deletion
+    elif isinstance(value, dict):
+        return value
+    else:
+        return str(value) 
 
 class TxtRecord:
     def __init__(self):
-        self.id = None # nanoid.generate()
-        self.data = {}
-        self.slone = None
-        self.meta = TxtRecordMeta()
+        self.id = None     # nanoid.generate()
+        self.data = {}     # data is the source-of-truth, not slone
+        self._slone = None
+        self.variant = None
 
-    def __getitem__(self, field_name):
-        if isinstance(field_name, str):
-            if field_name in self.data:
-                return self.data[field_name]
+    def __getitem__(self, name):
+        if isinstance(name, str):
+            if name in self.data:
+                return self.data[name]
         return Nothing
+
+    def __setitem__(self, name, value):
+        final_name = interpret_dict_name(name)
+        final_value = interpret_dict_value(value)
+        self.data[final_name] = final_value
 
 
 class TxtTable:
@@ -49,27 +72,126 @@ class TxtTable:
         return os.path.join(self.db_ref.db_base_dir, self.table_dir)
 
     def create(self, record):
-        result = TxtRecord()
-        result.id = libtxtdb.create_record(
+        slone = None
+        if isinstance(record, str):
+            slone = record
+        elif isinstance(record, dict):
+            slone = serialize_slone(record)
+        elif isinstance(record, TxtRecord):
+            slone = serialize_slone(record.data)
+        else:
+            raise ValueError("The 'create' function only accepts dictionaries, SLONE-formatted strings, or TxtRecord objects.")
+        #
+        doc_str = libtxtdb.create_record(
             self.db_ref.db_base_dir.encode("utf8"), 
             self.table_dir.encode("utf8"), 
-            record.encode("utf8")
+            slone.encode("utf8")
         )
+        #
+        if doc_str.startswith("ERR"):
+            raise IOError(doc_str)
+        record = deserialize_slone(doc_str)
+        result = TxtRecord()
+        result.id = record["header"]["id"]
+        result.variant = record["header"]["variant"]
+        result._slone = doc_str
+        result.data = record["content"]
         return result
 
-    def read(self, record_id):
-        result = TxtRecord()
-        result.id = record_id
+    def read(self, record):
+        recordid = None
+        if isinstance(record, TxtRecord):
+            recordid = record.id
+        elif isinstance(record, str):
+            recordid = record
+        else:
+            raise ValueError("The 'update' function only accepts TxtRecord objects or recordid strings.")
+        #
         doc_str = libtxtdb.read_record(
             self.db_ref.db_base_dir.encode("utf8"), 
             self.table_dir.encode("utf8"), 
-            str(record_id).encode("utf8")
+            str(recordid).encode("utf8")
+        )
+        #
+        if doc_str.startswith("ERR"):
+            raise IOError(doc_str)
+        record = deserialize_slone(doc_str)
+        result = TxtRecord()
+        result.id = record["header"]["id"]
+        result.variant = record["header"]["variant"]
+        result._slone = doc_str
+        result.data = record["content"]
+        return result
+
+    def update(self, record):
+        result = TxtRecord()
+        if isinstance(record, TxtRecord):
+            result.data = record.data
+            temp = {}
+            temp["header"] = {}
+            temp["header"]["id"] = record.id
+            temp["content"] = record.data
+            result._slone = serialize_slone(temp)
+        else:
+            raise ValueError("The 'update' function only accepts TxtRecord objects.")
+        #
+        doc_str = libtxtdb.update_record(
+            self.db_ref.db_base_dir.encode("utf8"), 
+            self.table_dir.encode("utf8"), 
+            result._slone.encode("utf8")
+        )
+        #
+        if doc_str.startswith("ERR"):
+            raise IOError(doc_str)
+        temp = deserialize_slone(doc_str)
+        result.id = temp["header"]["id"]
+        result.variant = temp["header"]["variant"]
+        result._slone = doc_str
+        result.data = temp["content"]
+        return result
+
+    def delete(self, record):
+        recordid = None
+        if isinstance(record, TxtRecord):
+            recordid = record.id
+        elif isinstance(record, str):
+            recordid = record
+        else:
+            raise ValueError("The 'update' function only accepts TxtRecord objects or recordid strings.")
+        #
+        doc_str = libtxtdb.delete_record(
+            self.db_ref.db_base_dir.encode("utf8"), 
+            self.table_dir.encode("utf8"), 
+            recordid.encode("utf8")
         )
         if doc_str.startswith("ERR"):
-            return None
-        record = deserialize_slone(doc_str)
-        print(record)
-        return result
+            raise IOError(doc_str)
+        if doc_str == "true":
+            return True
+        return False
+
+    def find(self, query, limit=100):
+        queryString = None
+        limitInt = None
+        if isinstance(query, str):
+            queryString = query
+        else:
+            raise ValueError("The 'find' function only accepts strings for the query.")
+        if isinstance(limit, int):
+            limitInt = limit
+        else:
+            raise ValueError("The 'find' function only accept integers for the limit.")
+        #
+        found_ids_str = libtxtdb.find_records(
+            self.db_ref.db_base_dir.encode("utf8"), 
+            self.table_dir.encode("utf8"), 
+            queryString.encode("utf8"),
+            limit
+        )
+        if found_ids_str.startswith("ERR"):
+            raise IOError(found_ids_str)
+        found_ids = found_ids_str.split() # split by whitespace
+        return found_ids
 
 
 class TxtDB:
