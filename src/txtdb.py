@@ -71,6 +71,12 @@ class TxtTable:
     def _fulldir(self):
         return os.path.join(self.db_ref.db_base_dir, self.table_dir)
 
+    def create_table(self):
+        result = libtxtdb.create_table(
+            self.db_ref.db_base_dir.encode("utf8"), 
+            self.table_dir.encode("utf8")
+        )
+
     def create(self, record):
         slone = None
         if isinstance(record, str):
@@ -170,13 +176,20 @@ class TxtTable:
             return True
         return False
 
-    def find(self, query, limit=100):
+    def find(self, query, order=None, limit=100):
         queryString = None
+        orderString = None
         limitInt = None
         if isinstance(query, str):
             queryString = query
         else:
             raise ValueError("The 'find' function only accepts strings for the query.")
+        if isinstance(order, str):
+            orderString = order
+        elif order is None:
+            orderString = ""
+        else:
+            raise ValueError("The 'find' function only accepts strings (or None) for the order.")
         if isinstance(limit, int):
             limitInt = limit
         else:
@@ -186,6 +199,7 @@ class TxtTable:
             self.db_ref.db_base_dir.encode("utf8"), 
             self.table_dir.encode("utf8"), 
             queryString.encode("utf8"),
+            orderString.encode("utf8"),
             limit
         )
         if found_ids_str.startswith("ERR"):
