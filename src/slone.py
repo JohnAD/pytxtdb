@@ -55,6 +55,7 @@ def deserialize_slone(doc_str):
 
 
 def _serialize(doc, level):
+    from txtdb import TxtRecord
     result = ""
     for key in doc:
         # indent
@@ -70,6 +71,8 @@ def _serialize(doc, level):
             result += _serialize(value, level + 1)
             result += " " * (level * 2)
             result += "}\n"
+        elif isinstance(value, TxtRecord):
+            result += '"' + str(value.id) + '"\n'
         elif value is None:
             result += "?\n"
         else:

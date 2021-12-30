@@ -71,20 +71,87 @@ class TxtTable:
     def _fulldir(self):
         return os.path.join(self.db_ref.db_base_dir, self.table_dir)
 
-    def create_table(self):
-        result = libtxtdb.create_table(
+    def _interpret_field_type(self, field_type):
+        field_expression = None
+        if isinstance(field_type, str):
+            text_field_expression = field_type
+        elif hasattr(field_type, "__name__"):
+            type_name = field_type.__name__
+            if type_name == 'int':
+                field_expression = "INTEGER"
+            elif type_name == 'str':
+                field_expression = "TEXT"
+            elif type_name == 'decimal':
+                field_expression = "DECIMAL"
+            elif type_name == 'datetime':
+                field_expression = "DATETIME"
+            elif type_name == 'bool':
+                field_expression = "BOOLEAN"
+        return field_expression
+
+    def apply_table(self):
+        result = libtxtdb.apply_table(
             self.db_ref.db_base_dir.encode("utf8"), 
             self.table_dir.encode("utf8")
         )
+        record = deserialize_slone(result)
 
-    def create(self, record):
+    def apply_column(self, column_name, column_type):
+        field_expression = self._interpret_field_type(column_type)
+        if field_expression == None:
+            raise ValueError(f"The 'apply_column' function does not support that column_type ({column_type}).")
+        result = libtxtdb.apply_column(
+            self.db_ref.db_base_dir.encode("utf8"), 
+            self.table_dir.encode("utf8"),
+            column_name.encode('utf8'),
+            field_expression.encode('utf8')
+        )
+        record = deserialize_slone(result)
+
+    def apply_joined_column(self, other_table):
+        if not isinstance(other_table, TxtTable):
+            raise ValueError("The 'apply_join' function only accepts other TxtTable for 'other_table'.")
+        if self.db_ref != other_table.db_ref:
+            raise ValueError("The other TxtTable must be part of the same database.")
+        result = libtxtdb.apply_joined_column(
+            self.db_ref.db_base_dir.encode("utf8"), 
+            self.table_dir.encode("utf8"),
+            other_table.table_dir.encode("utf8")
+        )
+        record = deserialize_slone(result)
+
+    def apply_index(self, index_name, field_name):
+        result = libtxtdb.apply_index(
+            self.db_ref.db_base_dir.encode("utf8"), 
+            self.table_dir.encode("utf8"),
+            index_name.encode("utf8"),
+            field_name.encode("utf8")
+        )
+
+    def create(self, record_data, record_id = None):
         slone = None
-        if isinstance(record, str):
-            slone = record
-        elif isinstance(record, dict):
+        if isinstance(record_data, str):
+            record = deserialize_slone(record_data)
+            if record_id:
+                record["header"] = {}
+                record["header"]["id"] = str(record_id)
             slone = serialize_slone(record)
-        elif isinstance(record, TxtRecord):
-            slone = serialize_slone(record.data)
+        elif isinstance(record_data, dict):
+            record = {}
+            record["content"] = record_data
+            record["header"] = {}
+            if record_id:
+                record["header"]["id"] = str(record_id)
+            slone = serialize_slone(record)
+        elif isinstance(record_data, TxtRecord):
+            record = {}
+            record["content"] = record_data.data
+            record["header"] = {}
+            if record_data.id:
+                record["header"]["id"] = str(record_data.id)
+            if record_id:
+                record["header"]["id"] = str(record_id)
+            slone = serialize_slone(record)
         else:
             raise ValueError("The 'create' function only accepts dictionaries, SLONE-formatted strings, or TxtRecord objects.")
         #
